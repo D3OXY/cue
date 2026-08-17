@@ -73,9 +73,6 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
     private var scrollTap: CFMachPort?
     private var suppressAllUntil: Double = 0
     private var suppressHorizontalUntil: Double = 0
-    // Pointer moves too: finger 1 entering at the edge tracks the cursor until
-    // finger 2 lands, so mouseMoved is frozen briefly after any edge contact.
-    private var suppressPointerUntil: Double = 0
 
     private init() {
         let path = "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
@@ -124,9 +121,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
 
     private func installScrollTap() {
         guard scrollTap == nil else { return }
-        let mask = CGEventMask(
-            (1 << CGEventType.scrollWheel.rawValue) | (1 << CGEventType.mouseMoved.rawValue)
-        )
+        let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -156,13 +151,6 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         return false
     }
 
-    fileprivate func shouldSuppressPointer() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        let now = ProcessInfo.processInfo.systemUptime
-        return now < suppressPointerUntil || now < suppressAllUntil
-    }
-
     // Edge swipe = some touch was hugging the right edge a moment ago, and now
     // two fingers are inside the pad moving left. Fingers register one at a
     // time and move fast, so the edge contact and the two-finger frame rarely
@@ -180,9 +168,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         }
         if maxX > 0.97 {
             edgeTime = timestamp
-            let now = ProcessInfo.processInfo.systemUptime
-            suppressHorizontalUntil = now + 0.5
-            suppressPointerUntil = now + 0.3
+            suppressHorizontalUntil = ProcessInfo.processInfo.systemUptime + 0.5
         }
 
         guard count == 2 else { return }
@@ -232,10 +218,6 @@ private func edgeSwipeScrollCallback(
         let dx = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
         let dy = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
         return EdgeSwipeMonitor.shared.shouldSuppressScroll(dx: dx, dy: dy)
-            ? nil
-            : Unmanaged.passUnretained(event)
-    case .mouseMoved:
-        return EdgeSwipeMonitor.shared.shouldSuppressPointer()
             ? nil
             : Unmanaged.passUnretained(event)
     default:
