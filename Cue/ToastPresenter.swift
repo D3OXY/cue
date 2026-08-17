@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Transient glass pill ("Captured", "Copied 3 items") near the top-right of the
-/// active screen. Non-activating, click-through, auto-dismisses.
+/// Transient glass pill ("Captured", "Copied 3 items") at the bottom center of
+/// the active screen. Non-activating, click-through, auto-dismisses.
 @MainActor
 final class ToastPresenter {
     static let shared = ToastPresenter()
@@ -10,7 +10,7 @@ final class ToastPresenter {
     private var panel: NSPanel?
     private var dismissTask: Task<Void, Never>?
 
-    func show(_ text: String) {
+    func show(_ text: String, systemImage: String = "checkmark.circle.fill") {
         dismissTask?.cancel()
         panel?.orderOut(nil)
 
@@ -27,7 +27,7 @@ final class ToastPresenter {
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
 
-        let hosting = NSHostingView(rootView: ToastView(text: text))
+        let hosting = NSHostingView(rootView: ToastView(text: text, systemImage: systemImage))
         hosting.frame.size = hosting.fittingSize
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
@@ -36,8 +36,8 @@ final class ToastPresenter {
             ?? NSScreen.main
         if let frame = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(
-                x: frame.maxX - panel.frame.width - 24,
-                y: frame.maxY - panel.frame.height - 24
+                x: frame.midX - panel.frame.width / 2,
+                y: frame.minY + 48
             ))
         }
 
@@ -67,13 +67,21 @@ final class ToastPresenter {
 
 private struct ToastView: View {
     let text: String
+    let systemImage: String
+    @State private var appeared = false
 
     var body: some View {
-        Label(text, systemImage: "checkmark.circle.fill")
-            .font(.callout.weight(.medium))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+        Label(text, systemImage: systemImage)
+            .font(.callout.weight(.semibold))
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .glassEffect(.regular, in: .capsule)
-            .padding(8)
+            .scaleEffect(appeared ? 1 : 0.85)
+            .opacity(appeared ? 1 : 0)
+            .onAppear {
+                withAnimation(.spring(duration: 0.3, bounce: 0.35)) { appeared = true }
+            }
+            .padding(10)
     }
 }
