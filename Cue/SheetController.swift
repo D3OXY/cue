@@ -96,6 +96,9 @@ final class SheetController {
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        // The glass shape draws its own edge; the window shadow would outline the
+        // full panel rect and read as a second border around it.
+        panel.hasShadow = false
         panel.isMovableByWindowBackground = false
         panel.contentView = NSHostingView(rootView: SheetView(model: model))
         return panel
