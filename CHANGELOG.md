@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2 — 2026-08-17
+
+- Fix bundle version metadata — releases now embed the real version, unblocking Sparkle update comparisons
+
 ## v0.1.1 — 2026-08-17
 
 - Changeset-driven releases — auto-maintained release PR, changelog-based release notes
