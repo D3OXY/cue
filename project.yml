@@ -1,6 +1,6 @@
 name: Cue
 options:
-  bundleIdPrefix: com.d3oxy
+  bundleIdPrefix: dev.deoxy
   deploymentTarget:
     macOS: "26.0"
 targets:
@@ -10,10 +10,21 @@ targets:
     sources: [Cue]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.d3oxy.cue
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "6.0"
+        # Stable self-signed identity so the Accessibility (TCC) grant survives
+        # rebuilds — ad-hoc signing would mint a new identity every build.
+        # CI builds pass CODE_SIGNING_ALLOWED=NO instead.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Cue Dev
+      configs:
+        # Separate dev bundle id keeps debug builds' TCC grants and data
+        # isolated from the released app.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: dev.deoxy.cue-dev
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: dev.deoxy.cue
     info:
       path: Cue/Info.plist
       properties:
