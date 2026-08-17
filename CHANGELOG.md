@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.1 — 2026-08-17
+
+- Changeset-driven releases — auto-maintained release PR, changelog-based release notes
+
 ## v0.1.0 — 2026-08-17
 
 - Initial release: Liquid Glass side sheet, double-Shift summon, instant AX
