@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.0 — 2026-08-17
+
+- Launch at Login toggle in the menu bar menu
+
 ## v0.2.1 — 2026-08-17
 
 - Edge swipe matches Notification Center mechanics (sequential finger entry), rightward two-finger swipe closes, and the gesture's scroll events are swallowed so background apps no longer react (browser back/forward etc.)
