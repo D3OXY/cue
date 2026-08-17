@@ -89,8 +89,16 @@ final class SheetController {
             // NSEvent isn't Sendable; pull out what we need before the actor hop.
             let key = event.charactersIgnoringModifiers
             let command = event.modifierFlags.contains(.command)
+            let shiftReturn = event.keyCode == 36 && event.modifierFlags.contains(.shift)
             let handled = MainActor.assumeIsolated { () -> Bool in
-                guard let self, command, self.panel.isKeyWindow else { return false }
+                guard let self, self.panel.isKeyWindow else { return false }
+
+                // Shift+Enter inserts a newline in whichever text field is editing.
+                if shiftReturn, let editor = self.panel.firstResponder as? NSTextView {
+                    editor.insertNewlineIgnoringFieldEditor(nil)
+                    return true
+                }
+                guard command else { return false }
 
                 // ⌘K works even mid-typing; ⌘C/⌘Z defer to the focused text field.
                 if key == "k" {

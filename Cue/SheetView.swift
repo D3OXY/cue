@@ -181,6 +181,7 @@ struct SheetView: View {
                 .textFieldStyle(.plain)
                 .font(.callout)
                 .lineLimit(1...5)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .focused($composerFocused)
                 .onSubmit {
                     withAnimation(.snappy(duration: 0.25)) {
