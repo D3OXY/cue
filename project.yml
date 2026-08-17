@@ -1,0 +1,22 @@
+name: Cue
+options:
+  bundleIdPrefix: com.d3oxy
+  deploymentTarget:
+    macOS: "26.0"
+targets:
+  Cue:
+    type: application
+    platform: macOS
+    sources: [Cue]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.d3oxy.cue
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "6.0"
+    info:
+      path: Cue/Info.plist
+      properties:
+        # Menu bar app: no Dock icon, no main window.
+        LSUIElement: true
+        CFBundleDisplayName: Cue
