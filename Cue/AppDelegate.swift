@@ -1,10 +1,15 @@
 import AppKit
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let sheet = SheetController()
     private let shiftMonitor = ShiftTapMonitor()
+    // Silent auto-update (configured in Info.plist); menu item for manual checks.
+    private let updater = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
+    )
     private lazy var onboarding = PermissionOnboarding { [weak self] in
         self?.shiftMonitor.start()
     }
@@ -42,6 +47,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = NSMenuItem(title: "Open Cue", action: #selector(toggleSheet), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
+        menu.addItem(.separator())
+        let update = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        update.target = updater
+        menu.addItem(update)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Cue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu

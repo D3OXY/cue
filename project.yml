@@ -3,6 +3,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: "7.0.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 options:
   bundleIdPrefix: dev.deoxy
   deploymentTarget:
@@ -15,6 +18,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         MARKETING_VERSION: 0.1.0
@@ -40,3 +45,9 @@ targets:
         # Menu bar app: no Dock icon, no main window.
         LSUIElement: true
         CFBundleDisplayName: $(PRODUCT_NAME)
+        # Sparkle: silent daily auto-update from the gh-pages appcast.
+        SUFeedURL: https://d3oxy.github.io/cue/appcast.xml
+        SUPublicEDKey: REPLACE_WITH_SPARKLE_PUBLIC_KEY
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
+        SUScheduledCheckInterval: 86400
