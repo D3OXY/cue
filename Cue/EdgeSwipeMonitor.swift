@@ -46,8 +46,9 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
     /// The MT frame callback carries no context pointer, hence a singleton.
     static let shared = EdgeSwipeMonitor()
 
-    /// Called on the main actor when the gesture fires.
-    var onSwipe: (@MainActor () -> Void)?
+    /// Called on the main actor when the gestures fire.
+    var onSwipeIn: (@MainActor () -> Void)?   // edge → inward: open
+    var onSwipeOut: (@MainActor () -> Void)?  // inward → edge: close
 
     private let createList: MTCreateListFn?
     private let register: MTRegisterFn?
@@ -61,9 +62,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
 
     // Gesture state; only touched from MT callback threads, under the lock.
     private let lock = NSLock()
-    private var tracking = false
-    private var trackStart: Double = 0
-    private var trackStartX: Float = 0
+    private var edgeTime: Double = -1
     private var lastFire: Double = 0
 
     private init() {
@@ -105,38 +104,52 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         devices.removeAll()
     }
 
-    // Two fingers appearing at the far right edge, then moving left within half
-    // a second: that's the Notification Center-style edge swipe.
+    // Edge swipe = some touch was hugging the right edge a moment ago, and now
+    // two fingers are inside the pad moving left. Fingers register one at a
+    // time and move fast, so the edge contact and the two-finger frame rarely
+    // coincide — hence the two-phase check.
     fileprivate func handleFrame(_ raw: UnsafeRawPointer?, count: Int32, timestamp: Double) {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let raw, count == 2 else {
-            tracking = false
-            return
-        }
+        guard let raw, count > 0 else { return }
         let touches = raw.assumingMemoryBound(to: MTTouch.self)
-        let minX = min(touches[0].normalized.pos.x, touches[1].normalized.pos.x)
 
-        if !tracking {
-            if minX > 0.985 {
-                tracking = true
-                trackStart = timestamp
-                trackStartX = minX
-            }
-            return
+        var maxX: Float = 0
+        for i in 0..<Int(count) {
+            maxX = max(maxX, touches[i].normalized.pos.x)
         }
-        if timestamp - trackStart > 0.5 {
-            tracking = false
-            return
+        if maxX > 0.97 {
+            edgeTime = timestamp
         }
-        if trackStartX - minX > 0.08, timestamp - lastFire > 0.7 {
-            tracking = false
+
+        guard count == 2 else { return }
+        let minX = min(touches[0].normalized.pos.x, touches[1].normalized.pos.x)
+        let velLeft = max(touches[0].normalized.vel.x, touches[1].normalized.vel.x)
+        let velRight = min(touches[0].normalized.vel.x, touches[1].normalized.vel.x)
+
+        // Open: was at the edge a moment ago, both fingers now inside moving left.
+        if edgeTime > 0, timestamp - edgeTime < 0.4,
+           minX < 0.92, velLeft < -0.3,
+           timestamp - lastFire > 0.7 {
             lastFire = timestamp
-            let callback = onSwipe
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { callback?() }
-            }
+            edgeTime = -1
+            fire(onSwipeIn)
+            return
+        }
+
+        // Close: a brisk two-finger rightward swipe anywhere on the pad. Only
+        // meaningful while the sheet is visible (hide() no-ops otherwise), so
+        // ordinary scrolls with the sheet closed can't misfire anything.
+        if velRight > 0.5, timestamp - lastFire > 0.7 {
+            lastFire = timestamp
+            fire(onSwipeOut)
+        }
+    }
+
+    private func fire(_ callback: (@MainActor () -> Void)?) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { callback?() }
         }
     }
 }

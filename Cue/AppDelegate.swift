@@ -19,8 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
 
-        EdgeSwipeMonitor.shared.onSwipe = { [weak self] in
+        EdgeSwipeMonitor.shared.onSwipeIn = { [weak self] in
             self?.sheet.show()
+        }
+        EdgeSwipeMonitor.shared.onSwipeOut = { [weak self] in
+            self?.sheet.hide()
         }
         if UserDefaults.standard.bool(forKey: Self.edgeSwipeKey) {
             EdgeSwipeMonitor.shared.enable()

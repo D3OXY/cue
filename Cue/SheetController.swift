@@ -55,6 +55,7 @@ final class SheetController {
     }
 
     func hide() {
+        guard panel.isVisible else { return }
         removeClickAwayMonitor()
         let offscreen = panel.frame.offsetBy(dx: Self.width, dy: 0)
         NSAnimationContext.runAnimationGroup { context in
