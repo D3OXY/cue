@@ -14,8 +14,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.shiftMonitor.start()
     }
 
+    private static let edgeSwipeKey = "edgeSwipeEnabled"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
+
+        EdgeSwipeMonitor.shared.onSwipe = { [weak self] in
+            self?.sheet.show()
+        }
+        if UserDefaults.standard.bool(forKey: Self.edgeSwipeKey) {
+            EdgeSwipeMonitor.shared.enable()
+        }
 
         shiftMonitor.onDoubleShift = { [weak self] in
             guard let self else { return }
@@ -56,6 +65,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         update.target = updater
         menu.addItem(update)
         menu.addItem(.separator())
+        let swipe = NSMenuItem(
+            title: "Edge Swipe to Open",
+            action: #selector(toggleEdgeSwipe(_:)),
+            keyEquivalent: ""
+        )
+        swipe.target = self
+        swipe.isEnabled = EdgeSwipeMonitor.shared.available
+        swipe.state = UserDefaults.standard.bool(forKey: Self.edgeSwipeKey) ? .on : .off
+        menu.addItem(swipe)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Cue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
 
@@ -64,6 +83,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleSheet() {
         sheet.toggle()
+    }
+
+    @objc private func toggleEdgeSwipe(_ sender: NSMenuItem) {
+        let enabling = sender.state == .off
+        UserDefaults.standard.set(enabling, forKey: Self.edgeSwipeKey)
+        sender.state = enabling ? .on : .off
+
+        if enabling {
+            EdgeSwipeMonitor.shared.enable()
+            // Cue can't consume the system's gesture — the user must turn the
+            // Notification Center swipe off or both will fire.
+            let alert = NSAlert()
+            alert.messageText = "One more step"
+            alert.informativeText = """
+            Turn off "Notification Center" under System Settings › Trackpad › \
+            More Gestures, so the swipe opens Cue instead of Notification Center.
+            """
+            alert.addButton(withTitle: "Open Trackpad Settings")
+            alert.addButton(withTitle: "Done Already")
+            NSApp.activate()
+            if alert.runModal() == .alertFirstButtonReturn,
+               let url = URL(string: "x-apple.systempreferences:com.apple.Trackpad-Settings.extension") {
+                NSWorkspace.shared.open(url)
+            }
+        } else {
+            EdgeSwipeMonitor.shared.disable()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
