@@ -1,1 +1,1 @@
-patch: Edge swipe now matches Notification Center mechanics (fingers can enter the edge one at a time); two-finger rightward swipe closes the sheet
+patch: Edge swipe matches Notification Center mechanics (sequential finger entry), rightward two-finger swipe closes, and the gesture's scroll events are swallowed so background apps no longer react (browser back/forward etc.)

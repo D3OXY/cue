@@ -65,6 +65,15 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
     private var edgeTime: Double = -1
     private var lastFire: Double = 0
 
+    // MT frames can't consume the gesture's scroll events, so an active
+    // CGEventTap swallows them: horizontal scrolls while an edge contact is
+    // armed, everything briefly once a swipe fires (stops browser back/forward
+    // from also reacting). Deadlines use ProcessInfo uptime; read from the tap
+    // callback (main thread) under the same lock.
+    private var scrollTap: CFMachPort?
+    private var suppressAllUntil: Double = 0
+    private var suppressHorizontalUntil: Double = 0
+
     private init() {
         let path = "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
         let lib = dlopen(path, RTLD_NOW)
@@ -93,6 +102,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
             _ = startDevice?(device, 0)
             devices.append(device)
         }
+        installScrollTap()
     }
 
     func disable() {
@@ -102,6 +112,43 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
             unregister?(device, noCallback)
         }
         devices.removeAll()
+        if let scrollTap {
+            CGEvent.tapEnable(tap: scrollTap, enable: false)
+            CFMachPortInvalidate(scrollTap)
+            self.scrollTap = nil
+        }
+    }
+
+    private func installScrollTap() {
+        guard scrollTap == nil else { return }
+        let mask = CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: edgeSwipeScrollCallback,
+            userInfo: nil
+        ) else { return }
+        scrollTap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    fileprivate func reenableScrollTap() {
+        if let scrollTap {
+            CGEvent.tapEnable(tap: scrollTap, enable: true)
+        }
+    }
+
+    fileprivate func shouldSuppressScroll(dx: Double, dy: Double) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = ProcessInfo.processInfo.systemUptime
+        if now < suppressAllUntil { return true }
+        if now < suppressHorizontalUntil, abs(dx) > abs(dy) { return true }
+        return false
     }
 
     // Edge swipe = some touch was hugging the right edge a moment ago, and now
@@ -121,6 +168,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         }
         if maxX > 0.97 {
             edgeTime = timestamp
+            suppressHorizontalUntil = ProcessInfo.processInfo.systemUptime + 0.5
         }
 
         guard count == 2 else { return }
@@ -134,6 +182,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
            timestamp - lastFire > 0.7 {
             lastFire = timestamp
             edgeTime = -1
+            suppressAllUntil = ProcessInfo.processInfo.systemUptime + 0.8
             fire(onSwipeIn)
             return
         }
@@ -143,6 +192,7 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         // ordinary scrolls with the sheet closed can't misfire anything.
         if velRight > 0.5, timestamp - lastFire > 0.7 {
             lastFire = timestamp
+            suppressAllUntil = ProcessInfo.processInfo.systemUptime + 0.8
             fire(onSwipeOut)
         }
     }
@@ -151,6 +201,27 @@ final class EdgeSwipeMonitor: @unchecked Sendable {
         DispatchQueue.main.async {
             MainActor.assumeIsolated { callback?() }
         }
+    }
+}
+
+private func edgeSwipeScrollCallback(
+    _ proxy: CGEventTapProxy,
+    _ type: CGEventType,
+    _ event: CGEvent,
+    _ refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    switch type {
+    case .tapDisabledByTimeout, .tapDisabledByUserInput:
+        EdgeSwipeMonitor.shared.reenableScrollTap()
+        return Unmanaged.passUnretained(event)
+    case .scrollWheel:
+        let dx = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
+        let dy = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
+        return EdgeSwipeMonitor.shared.shouldSuppressScroll(dx: dx, dy: dy)
+            ? nil
+            : Unmanaged.passUnretained(event)
+    default:
+        return Unmanaged.passUnretained(event)
     }
 }
 
