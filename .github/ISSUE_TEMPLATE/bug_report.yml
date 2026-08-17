@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in Cue isn't working
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Cue version
+      description: Menu bar icon → Check for Updates shows it, or `defaults read /Applications/Cue.app/Contents/Info.plist CFBundleShortVersionString`
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: If it involves capture, name the app you were capturing from.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce

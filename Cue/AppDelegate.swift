@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import Sparkle
 
 @MainActor
@@ -77,6 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         swipe.isEnabled = EdgeSwipeMonitor.shared.available
         swipe.state = UserDefaults.standard.bool(forKey: Self.edgeSwipeKey) ? .on : .off
         menu.addItem(swipe)
+        let login = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleLaunchAtLogin(_:)),
+            keyEquivalent: ""
+        )
+        login.target = self
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Cue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -112,6 +121,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             EdgeSwipeMonitor.shared.disable()
+        }
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+                sender.state = .off
+            } else {
+                try SMAppService.mainApp.register()
+                sender.state = .on
+            }
+        } catch {
+            NSLog("Launch at login toggle failed: %@", error.localizedDescription)
         }
     }
 

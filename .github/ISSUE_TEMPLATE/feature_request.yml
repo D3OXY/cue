@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose an addition to Cue
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What workflow problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Cue favors the smallest design that solves the problem — one surface, no settings sprawl.
