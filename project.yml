@@ -45,6 +45,10 @@ targets:
         # Menu bar app: no Dock icon, no main window.
         LSUIElement: true
         CFBundleDisplayName: $(PRODUCT_NAME)
+        # Reference build settings so CI's version overrides reach the bundle
+        # (xcodegen otherwise hardcodes 1.0, breaking Sparkle's comparison).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Sparkle: silent daily auto-update from the gh-pages appcast.
         SUFeedURL: https://d3oxy.github.io/cue/appcast.xml
         SUPublicEDKey: ow7Bz6o7Lj5QLeVAN/GxA5yf5oAXoY7sYVGuRma14vE=
