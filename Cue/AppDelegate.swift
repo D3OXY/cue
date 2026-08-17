@@ -4,8 +4,25 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let sheet = SheetController()
+    private let shiftMonitor = ShiftTapMonitor()
+    private lazy var onboarding = PermissionOnboarding { [weak self] in
+        self?.shiftMonitor.start()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setUpStatusItem()
+
+        shiftMonitor.onDoubleShift = { [weak self] in
+            self?.sheet.toggle()
+        }
+        if PermissionOnboarding.isTrusted {
+            shiftMonitor.start()
+        } else {
+            onboarding.showIfNeeded()
+        }
+    }
+
+    private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(
             systemSymbolName: "list.bullet.rectangle",
