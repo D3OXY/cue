@@ -15,6 +15,21 @@ final class SheetModel {
         var id: String { item.id }
     }
 
+    /// A file waiting in the composer to be attached to the next added item.
+    struct Staged: Identifiable {
+        let id: String
+        let sourceURL: URL
+        let originalName: String
+        let uti: String
+        /// Pasted images live in a temp file we own and clean up on unstage.
+        let temporary: Bool
+    }
+
+    private struct DeleteBatch {
+        let entries: [(item: ItemRecord, attachments: [AttachmentRecord])]
+        let purgeID: String
+    }
+
     private static let archiveAfter: TimeInterval = 7 * 86_400
     private static let activeSectionKey = "activeSectionID"
 
@@ -23,6 +38,8 @@ final class SheetModel {
     private(set) var sections: [SectionRecord] = []
     private(set) var items: [ItemRecord] = []
     private(set) var hits: [SearchHit] = []
+    private(set) var attachmentsByItem: [String: [AttachmentRecord]] = [:]
+    private(set) var staged: [Staged] = []
 
     var query = "" {
         didSet { refreshSearch() }
@@ -37,8 +54,10 @@ final class SheetModel {
     /// Set by SheetController; Esc / click-away route through here.
     var requestClose: (() -> Void)?
 
-    // Each entry is one delete operation (the removed records), for ⌘Z.
-    private var undoStack: [[ItemRecord]] = []
+    // Deletes are undoable, so their files purge deferred: each batch parks its
+    // file URLs here, undo reclaims them, and whatever remains is removed at quit.
+    private var undoStack: [DeleteBatch] = []
+    private var pendingPurge: [String: [URL]] = [:]
 
     var activeSectionID: String {
         didSet {
@@ -68,7 +87,6 @@ final class SheetModel {
 
     func add(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
 
         // `# Name` creates-or-switches a section instead of adding an item.
         if trimmed.hasPrefix("#") {
@@ -77,13 +95,20 @@ final class SheetModel {
             return
         }
 
+        // Attachment-only items are fine; empty-and-fileless is not.
+        guard !trimmed.isEmpty || !staged.isEmpty else { return }
+
+        let itemID = UUID().uuidString
+        let outgoing = staged
+        staged = []
+
         try? db.queue.write { [activeSectionID] db in
             let maxOrder = try Int.fetchOne(
                 db, sql: "SELECT IFNULL(MAX(sortOrder), -1) FROM item WHERE sectionId = ?",
                 arguments: [activeSectionID]
             ) ?? -1
             try ItemRecord(
-                id: UUID().uuidString,
+                id: itemID,
                 sectionId: activeSectionID,
                 text: trimmed,
                 done: false,
@@ -91,6 +116,21 @@ final class SheetModel {
                 createdAt: Date().timeIntervalSince1970,
                 sortOrder: maxOrder + 1
             ).insert(db)
+            for file in outgoing {
+                try AttachmentRecord(
+                    id: file.id,
+                    itemId: itemID,
+                    originalName: file.originalName,
+                    uti: file.uti,
+                    createdAt: Date().timeIntervalSince1970
+                ).insert(db)
+            }
+        }
+        for file in outgoing {
+            try? AttachmentStore.adopt(file.sourceURL, as: file.id)
+            if file.temporary {
+                try? FileManager.default.removeItem(at: file.sourceURL)
+            }
         }
         reloadItems()
     }
@@ -120,21 +160,29 @@ final class SheetModel {
         reloadItems()
     }
 
-    /// Copies the selection to the pasteboard: single item as raw text, several as
-    /// a numbered list (the prompt-routing flow). Returns how many were copied.
+    /// Copies the selection to the pasteboard: text (single item raw, several as a
+    /// numbered list) plus every attached file, so one paste carries both.
+    /// Returns how many items were copied.
     func copySelection() -> Int {
         let selected = displayedItems.filter { selection.contains($0.id) }
         guard !selected.isEmpty else { return 0 }
 
-        let text = selected.count == 1
-            ? selected[0].text
-            : selected.enumerated()
+        let withText = selected.filter { !$0.text.isEmpty }
+        let text = withText.count == 1
+            ? withText[0].text
+            : withText.enumerated()
                 .map { "\($0.offset + 1). \($0.element.text)" }
                 .joined(separator: "\n")
 
+        let files = selected
+            .flatMap { attachmentsByItem[$0.id] ?? [] }
+            .map { AttachmentStore.fileURL(for: $0.id) as NSURL }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        var objects: [NSPasteboardWriting] = files
+        if !text.isEmpty { objects.insert(text as NSString, at: 0) }
+        pasteboard.writeObjects(objects)
         return selected.count
     }
 
@@ -142,13 +190,18 @@ final class SheetModel {
         let removed = displayedItems.filter { selection.contains($0.id) }
         guard !removed.isEmpty else { return }
 
+        let entries = removed.map { (item: $0, attachments: attachmentsByItem[$0.id] ?? []) }
         try? db.queue.write { db in
-            for item in removed {
-                _ = try ItemRecord.deleteOne(db, key: item.id)
+            for entry in entries {
+                _ = try ItemRecord.deleteOne(db, key: entry.item.id) // attachments cascade
             }
         }
+
+        let purgeID = UUID().uuidString
+        pendingPurge[purgeID] = entries.flatMap(\.attachments).map { AttachmentStore.fileURL(for: $0.id) }
+        undoStack.append(DeleteBatch(entries: entries, purgeID: purgeID))
+
         selection.removeAll()
-        undoStack.append(removed)
         reloadItems()
         refreshSearch()
     }
@@ -156,12 +209,79 @@ final class SheetModel {
     func undoDelete() {
         guard let batch = undoStack.popLast() else { return }
         try? db.queue.write { db in
-            for item in batch {
-                try item.insert(db)
+            for entry in batch.entries {
+                try entry.item.insert(db)
+                for attachment in entry.attachments {
+                    try attachment.insert(db)
+                }
             }
         }
+        pendingPurge.removeValue(forKey: batch.purgeID)
         reloadItems()
         refreshSearch()
+    }
+
+    /// Called at quit: removes files for deletes that were never undone.
+    func purgePendingFiles() {
+        for url in pendingPurge.values.flatMap({ $0 }) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        pendingPurge.removeAll()
+    }
+
+    // MARK: - Staging (composer attachments)
+
+    func stage(urls: [URL]) {
+        let files = urls.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false }
+        guard !files.isEmpty else { return }
+        staged += files.map {
+            Staged(
+                id: UUID().uuidString,
+                sourceURL: $0,
+                originalName: $0.lastPathComponent,
+                uti: AttachmentStore.contentType(of: $0),
+                temporary: false
+            )
+        }
+        ToastPresenter.shared.show(
+            files.count == 1 ? "Attached 1 file" : "Attached \(files.count) files",
+            systemImage: "paperclip"
+        )
+    }
+
+    /// Stages pasteboard contents if they're files or an image.
+    /// Returns false when it's ordinary text (so the paste proceeds normally).
+    func stagePasteboard() -> Bool {
+        let pasteboard = NSPasteboard.general
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL], !urls.isEmpty {
+            stage(urls: urls)
+            return true
+        }
+        if pasteboard.string(forType: .string) == nil,
+           let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff),
+           let url = AttachmentStore.writeTempImage(data) {
+            staged.append(Staged(
+                id: UUID().uuidString,
+                sourceURL: url,
+                originalName: "Pasted image.png",
+                uti: "public.png",
+                temporary: true
+            ))
+            ToastPresenter.shared.show("Attached image", systemImage: "paperclip")
+            return true
+        }
+        return false
+    }
+
+    func unstage(_ id: String) {
+        guard let index = staged.firstIndex(where: { $0.id == id }) else { return }
+        let file = staged.remove(at: index)
+        if file.temporary {
+            try? FileManager.default.removeItem(at: file.sourceURL)
+        }
     }
 
     // MARK: - Sections
@@ -227,11 +347,28 @@ final class SheetModel {
                 arguments: [activeSectionID, archiveCutoff]
             )
         }) ?? []
+        reloadAttachments(for: items.map(\.id))
+    }
+
+    private func reloadAttachments(for ids: [String]) {
+        guard !ids.isEmpty else {
+            attachmentsByItem = [:]
+            return
+        }
+        let all = (try? db.queue.read { db in
+            try AttachmentRecord.fetchAll(
+                db,
+                sql: "SELECT * FROM attachment WHERE itemId IN (\(ids.map { _ in "?" }.joined(separator: ","))) ORDER BY createdAt",
+                arguments: .init(ids)
+            )
+        }) ?? []
+        attachmentsByItem = Dictionary(grouping: all, by: \.itemId)
     }
 
     private func refreshSearch() {
         guard searching, let match = Self.ftsMatch(for: query) else {
             hits = []
+            if !searching { reloadAttachments(for: items.map(\.id)) }
             return
         }
         let cutoff = archiveCutoff
@@ -258,6 +395,7 @@ final class SheetModel {
                     )
                 }
         }) ?? []
+        reloadAttachments(for: (items + hits.map(\.item)).map(\.id))
     }
 
     /// Builds a prefix-matching FTS5 query, quoting tokens so user input can't

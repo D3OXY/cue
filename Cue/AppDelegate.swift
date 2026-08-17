@@ -52,4 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleSheet() {
         sheet.toggle()
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Deleted items' files purge only now, so ⌘Z stayed possible all session.
+        sheet.model.purgePendingFiles()
+    }
 }

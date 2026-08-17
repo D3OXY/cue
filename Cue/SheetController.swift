@@ -105,6 +105,11 @@ final class SheetController {
                     self.model.switcherShown.toggle()
                     return true
                 }
+                // ⌘V with files or an image on the pasteboard stages an attachment
+                // instead of pasting; plain text falls through to the field.
+                if key == "v", self.panel.firstResponder is NSTextView {
+                    return self.model.stagePasteboard()
+                }
                 guard !(self.panel.firstResponder is NSTextView) else { return false }
 
                 switch key {

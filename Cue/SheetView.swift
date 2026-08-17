@@ -14,7 +14,7 @@ struct SheetView: View {
     var body: some View {
         VStack(spacing: 12) {
             header
-            sectionHeader
+            SectionHeader(model: model)
             itemList
             composer
         }
@@ -22,6 +22,10 @@ struct SheetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .glassEffect(.regular, in: .rect(cornerRadius: Self.outerRadius))
         .padding(8)
+        .dropDestination(for: URL.self) { urls, _ in
+            model.stage(urls: urls)
+            return true
+        }
         .overlay {
             if model.switcherShown {
                 SectionSwitcher(model: model)
@@ -105,25 +109,6 @@ struct SheetView: View {
         }
     }
 
-    private var sectionHeader: some View {
-        HStack(spacing: 8) {
-            Text(model.searching ? "Results" : (model.activeSection?.name ?? "Inbox"))
-                .font(.footnote.weight(.semibold))
-                .textCase(.uppercase)
-                .kerning(1.2)
-                .foregroundStyle(.secondary)
-                .contextMenu {
-                    if !model.searching, model.activeSectionID != Database.inboxID {
-                        Button("Delete Section") { model.deleteSection(model.activeSectionID) }
-                    }
-                }
-            Rectangle()
-                .fill(.quaternary)
-                .frame(height: 1)
-        }
-        .padding(.horizontal, 2)
-    }
-
     private var itemList: some View {
         ScrollViewReader { proxy in
             List(selection: $model.selection) {
@@ -131,6 +116,7 @@ struct SheetView: View {
                     ForEach(model.hits) { hit in
                         ItemRow(
                             item: hit.item,
+                            attachments: model.attachmentsByItem[hit.id] ?? [],
                             selected: model.selection.contains(hit.id),
                             radius: Self.innerRadius,
                             badge: hit.archived ? "\(hit.sectionName) · Archived" : hit.sectionName
@@ -145,6 +131,7 @@ struct SheetView: View {
                     ForEach(model.items) { item in
                         ItemRow(
                             item: item,
+                            attachments: model.attachmentsByItem[item.id] ?? [],
                             selected: model.selection.contains(item.id),
                             radius: Self.innerRadius,
                             badge: nil
@@ -172,23 +159,41 @@ struct SheetView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "plus.circle")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
-            TextField("Add a note, or type # Section", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.callout)
-                .lineLimit(1...5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .focused($composerFocused)
-                .onSubmit {
-                    withAnimation(.snappy(duration: 0.25)) {
-                        model.add(draft)
-                        draft = ""
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.staged.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(model.staged) { file in
+                            StagedChip(file: file) { model.unstage(file.id) }
+                        }
                     }
                 }
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                TextField("Add a note, or type # Section", text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .lineLimit(1...5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .focused($composerFocused)
+                    .onSubmit {
+                        withAnimation(.snappy(duration: 0.25)) {
+                            model.add(draft)
+                            draft = ""
+                        }
+                    }
+                Button(action: pickFiles) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Attach files")
+            }
         }
         .padding(12)
         .background(.quinary, in: .rect(cornerRadius: Self.innerRadius))
@@ -201,10 +206,65 @@ struct SheetView: View {
         )
         .animation(.easeOut(duration: 0.15), value: composerFocused)
     }
+
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK {
+            model.stage(urls: panel.urls)
+        }
+    }
+}
+
+/// Active section name; right-click to rename (inline) or delete.
+private struct SectionHeader: View {
+    @Bindable var model: SheetModel
+    @State private var renaming = false
+    @State private var name = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if renaming {
+                TextField("Section name", text: $name)
+                    .textFieldStyle(.plain)
+                    .font(.footnote.weight(.semibold))
+                    .focused($focused)
+                    .onSubmit {
+                        model.renameActiveSection(to: name)
+                        renaming = false
+                    }
+                    .onExitCommand { renaming = false }
+                    .frame(maxWidth: 160)
+            } else {
+                Text(model.searching ? "Results" : (model.activeSection?.name ?? "Inbox"))
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .kerning(1.2)
+                    .foregroundStyle(.secondary)
+                    .contextMenu {
+                        if !model.searching, model.activeSectionID != Database.inboxID {
+                            Button("Rename Section") {
+                                name = model.activeSection?.name ?? ""
+                                renaming = true
+                                focused = true
+                            }
+                            Button("Delete Section") { model.deleteSection(model.activeSectionID) }
+                        }
+                    }
+            }
+            Rectangle()
+                .fill(.quaternary)
+                .frame(height: 1)
+        }
+        .padding(.horizontal, 2)
+    }
 }
 
 private struct ItemRow: View {
     let item: ItemRecord
+    let attachments: [AttachmentRecord]
     let selected: Bool
     let radius: CGFloat
     let badge: String?
@@ -219,12 +279,21 @@ private struct ItemRow: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.borderless)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.text)
-                    .font(.callout)
-                    .strikethrough(item.done, color: .secondary)
-                    .foregroundStyle(item.done ? .secondary : .primary)
-                    .lineLimit(6)
+            VStack(alignment: .leading, spacing: 6) {
+                if !attachments.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(attachments) { attachment in
+                            AttachmentThumb(attachment: attachment)
+                        }
+                    }
+                }
+                if !item.text.isEmpty {
+                    Text(item.text)
+                        .font(.callout)
+                        .strikethrough(item.done, color: .secondary)
+                        .foregroundStyle(item.done ? .secondary : .primary)
+                        .lineLimit(6)
+                }
                 if let badge {
                     Text(badge)
                         .font(.caption2.weight(.medium))
@@ -241,6 +310,69 @@ private struct ItemRow: View {
                 .strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 1.5)
         )
         .opacity(item.done ? 0.55 : 1)
+    }
+}
+
+private struct AttachmentThumb: View {
+    let attachment: AttachmentRecord
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "doc")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .background(.quaternary)
+        .clipShape(.rect(cornerRadius: 8))
+        .help(attachment.originalName)
+        .task {
+            image = await AttachmentStore.thumbnail(for: AttachmentStore.fileURL(for: attachment.id))
+        }
+    }
+}
+
+private struct StagedChip: View {
+    let file: SheetModel.Staged
+    let remove: () -> Void
+    @State private var image: NSImage?
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Group {
+                if let image {
+                    Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "doc")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .clipShape(.rect(cornerRadius: 5))
+            Text(file.originalName)
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: 110)
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: .capsule)
+        .task {
+            image = await AttachmentStore.thumbnail(for: file.sourceURL, side: 40)
+        }
     }
 }
 
