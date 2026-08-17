@@ -29,7 +29,7 @@
 	<key>SUFeedURL</key>
 	<string>https://d3oxy.github.io/cue/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_PUBLIC_KEY</string>
+	<string>ow7Bz6o7Lj5QLeVAN/GxA5yf5oAXoY7sYVGuRma14vE=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>
