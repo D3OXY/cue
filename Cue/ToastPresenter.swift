@@ -27,17 +27,18 @@ final class ToastPresenter {
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
 
-        let hosting = NSHostingView(rootView: ToastView(text: text, systemImage: systemImage))
-        hosting.frame.size = hosting.fittingSize
-        panel.contentView = hosting
-        panel.setContentSize(hosting.fittingSize)
+        // NSHostingView's fitting size is unreliable for measuring the pill, so the
+        // panel is a fixed click-through strip and the pill centers itself inside.
+        let size = NSSize(width: 480, height: 72)
+        panel.setContentSize(size)
+        panel.contentView = NSHostingView(rootView: ToastView(text: text, systemImage: systemImage))
 
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
             ?? NSScreen.main
         if let frame = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(
-                x: frame.midX - panel.frame.width / 2,
-                y: frame.minY + 48
+                x: frame.midX - size.width / 2,
+                y: frame.minY + 40
             ))
         }
 
@@ -83,6 +84,6 @@ private struct ToastView: View {
             .onAppear {
                 withAnimation(.spring(duration: 0.3, bounce: 0.35)) { appeared = true }
             }
-            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
