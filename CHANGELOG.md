@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1 — 2026-08-17
+
+- Edge swipe matches Notification Center mechanics (sequential finger entry), rightward two-finger swipe closes, and the gesture's scroll events are swallowed so background apps no longer react (browser back/forward etc.)
+
 ## v0.2.0 — 2026-08-17
 
 - Two-finger swipe from the right trackpad edge summons the sheet (opt-in via the status menu; guides you to disable the Notification Center gesture)
