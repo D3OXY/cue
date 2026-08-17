@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Dispatched by release-pr.yml after it tags a merged release PR.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -76,5 +78,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" "Cue-$VERSION.zip" \
-            --title "Cue $VERSION" --generate-notes
+          # Notes come from the changelog section for this version; fall back to
+          # generated notes for tags cut without a changeset.
+          awk "/^## v$VERSION /{flag=1;next}/^## /{flag=0}flag" CHANGELOG.md > notes.md || true
+          if [ -s notes.md ]; then
+            gh release create "$GITHUB_REF_NAME" "Cue-$VERSION.zip" \
+              --title "Cue $VERSION" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "Cue-$VERSION.zip" \
+              --title "Cue $VERSION" --generate-notes
+          fi

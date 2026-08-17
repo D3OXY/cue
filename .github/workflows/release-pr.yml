@@ -1,0 +1,56 @@
+name: Release PR
+
+# Changesets-style automation:
+# - main has pending changesets  → keep a "Release vX.Y.Z" PR up to date
+# - main has none, but the top CHANGELOG version is untagged (release PR just
+#   merged) → tag it and dispatch the release workflow
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency: release-pr
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release PR or tag merged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PENDING=$(find .changes -name '*.md' ! -name 'README.md' | sort)
+          if [ -n "$PENDING" ]; then
+            NEW=$(sh scripts/prepare_release.sh)
+            awk "/^## v$NEW /{flag=1;next}/^## /{flag=0}flag" CHANGELOG.md > /tmp/body.md
+            git checkout -B changeset-release
+            git add -A
+            git commit -m "release v$NEW"
+            git push -f origin changeset-release
+            if gh pr list --head changeset-release --state open --json number --jq length | grep -qv '^0$'; then
+              gh pr edit changeset-release --title "Release v$NEW" --body-file /tmp/body.md
+            else
+              gh pr create --base main --head changeset-release \
+                --title "Release v$NEW" --body-file /tmp/body.md
+            fi
+          else
+            TOP=$(grep -m1 '^## v' CHANGELOG.md | awk '{print $2}' || true)
+            if [ -n "$TOP" ] && ! git rev-parse "refs/tags/$TOP" >/dev/null 2>&1; then
+              git tag "$TOP"
+              git push origin "$TOP"
+              # GITHUB_TOKEN-pushed tags don't trigger workflows; dispatch explicitly.
+              gh workflow run release.yml --ref "$TOP"
+            fi
+          fi
