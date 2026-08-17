@@ -74,6 +74,7 @@ private struct ToastView: View {
         Label(text, systemImage: systemImage)
             .font(.callout.weight(.semibold))
             .labelStyle(.titleAndIcon)
+            .fixedSize()
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .glassEffect(.regular, in: .capsule)
