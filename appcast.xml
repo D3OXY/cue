@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Cue</title>
+    <link>https://github.com/D3OXY/cue</link>
+    <item>
+      <title>0.3.0</title>
+      <sparkle:version>0.3.0</sparkle:version>
+      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 17 Aug 2026 13:57:26 +0000</pubDate>
+      <enclosure
+        url="https://github.com/D3OXY/cue/releases/download/v0.3.0/Cue-0.3.0.zip"
+        sparkle:edSignature="/8pajjbQxHfOHr2MDRsAj7VSQP5iua/76h7rEnpjNxT+8/dDCxSWWjTeoxG9SQEaBNxncFo+cvOi+DL3usswBQ==" length="2734913"
+        type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
