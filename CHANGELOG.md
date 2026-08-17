@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.0 — 2026-08-17
+
+- Two-finger swipe from the right trackpad edge summons the sheet (opt-in via the status menu; guides you to disable the Notification Center gesture)
+
 ## v0.1.2 — 2026-08-17
 
 - Fix bundle version metadata — releases now embed the real version, unblocking Sparkle update comparisons
