@@ -1,4 +1,8 @@
 name: Cue
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "7.0.0"
 options:
   bundleIdPrefix: dev.deoxy
   deploymentTarget:
@@ -8,6 +12,9 @@ targets:
     type: application
     platform: macOS
     sources: [Cue]
+    dependencies:
+      - package: GRDB
+        product: GRDB
     settings:
       base:
         MARKETING_VERSION: 0.1.0

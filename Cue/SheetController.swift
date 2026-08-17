@@ -90,8 +90,14 @@ final class SheetController {
             let key = event.charactersIgnoringModifiers
             let command = event.modifierFlags.contains(.command)
             let handled = MainActor.assumeIsolated { () -> Bool in
-                guard let self, command, self.panel.isKeyWindow,
-                      !(self.panel.firstResponder is NSTextView) else { return false }
+                guard let self, command, self.panel.isKeyWindow else { return false }
+
+                // ⌘K works even mid-typing; ⌘C/⌘Z defer to the focused text field.
+                if key == "k" {
+                    self.model.switcherShown.toggle()
+                    return true
+                }
+                guard !(self.panel.firstResponder is NSTextView) else { return false }
 
                 switch key {
                 case "c":
