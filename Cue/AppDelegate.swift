@@ -13,7 +13,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpStatusItem()
 
         shiftMonitor.onDoubleShift = { [weak self] in
-            self?.sheet.toggle()
+            guard let self else { return }
+            // With a selection in another app: capture instantly, leave the sheet
+            // alone. When Cue itself has focus (typing in the composer), any AX
+            // selection is stale — fall through to toggle.
+            if !sheet.isKey, let text = SelectionReader.frontmostSelectedText() {
+                sheet.model.add(text)
+                ToastPresenter.shared.show("Captured")
+            } else {
+                sheet.toggle()
+            }
         }
         if PermissionOnboarding.isTrusted {
             shiftMonitor.start()

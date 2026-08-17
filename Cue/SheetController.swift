@@ -19,10 +19,15 @@ final class SheetController {
 
     private lazy var panel: NSPanel = makePanel()
     private var clickAwayMonitor: Any?
+    private var keyMonitor: Any?
 
     init() {
         model.requestClose = { [weak self] in self?.hide() }
+        installKeyMonitor()
     }
+
+    /// True while the sheet itself has key focus (e.g. typing in the composer).
+    var isKey: Bool { panel.isKeyWindow }
 
     func toggle() {
         panel.isVisible ? hide() : show()
@@ -73,6 +78,35 @@ final class SheetController {
                 guard let self, self.panel.isVisible, !self.model.pinned else { return }
                 self.hide()
             }
+        }
+    }
+
+    // No menu bar (LSUIElement) means no Edit-menu key equivalents, so ⌘C/⌘Z on
+    // the item list are handled here. Text fields keep their own copy/undo: when
+    // the first responder is a field editor the event passes through untouched.
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // NSEvent isn't Sendable; pull out what we need before the actor hop.
+            let key = event.charactersIgnoringModifiers
+            let command = event.modifierFlags.contains(.command)
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let self, command, self.panel.isKeyWindow,
+                      !(self.panel.firstResponder is NSTextView) else { return false }
+
+                switch key {
+                case "c":
+                    let count = self.model.copySelection()
+                    guard count > 0 else { return false }
+                    ToastPresenter.shared.show(count == 1 ? "Copied" : "Copied \(count) items")
+                    return true
+                case "z":
+                    self.model.undoDelete()
+                    return true
+                default:
+                    return false
+                }
+            }
+            return handled ? nil : event
         }
     }
 

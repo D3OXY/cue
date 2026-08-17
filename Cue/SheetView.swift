@@ -75,14 +75,23 @@ struct SheetView: View {
 
     private var itemList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(model.visibleItems) { item in
-                        ItemRow(item: item) { model.toggle(item.id) }
-                            .id(item.id)
+            List(selection: $model.selection) {
+                ForEach(model.visibleItems) { item in
+                    ItemRow(item: item, selected: model.selection.contains(item.id)) {
+                        model.toggle(item.id)
                     }
+                    .id(item.id)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    // Reorder while filtered would scramble indexes; only offer it unfiltered.
+                    .moveDisabled(!model.query.isEmpty)
                 }
+                .onMove { model.move(from: $0, to: $1) }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .onDeleteCommand { model.deleteSelection() }
             .onChange(of: model.items.count) {
                 if let last = model.visibleItems.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -113,6 +122,7 @@ struct SheetView: View {
 
 private struct ItemRow: View {
     let item: SheetModel.Item
+    let selected: Bool
     let toggle: () -> Void
 
     var body: some View {
@@ -130,6 +140,10 @@ private struct ItemRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(.quinary, in: .rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(.tint, lineWidth: selected ? 1.5 : 0)
+        )
         .opacity(item.done ? 0.6 : 1)
     }
 }
